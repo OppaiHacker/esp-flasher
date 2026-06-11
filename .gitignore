@@ -1,0 +1,17 @@
+espflasher
+tools/.venv/
+firmware/*.bin
+iso/*
+!iso/.gitkeep
+logs/*
+!logs/.gitkeep
+__pycache__/
+*.part
+
+# Ignore all projects except default ones
+projects/*
+!projects/README.md
+!projects/project1_hello_world/
+!projects/project2_blink/
+!projects/project3_wifi_scanner/
+config.json

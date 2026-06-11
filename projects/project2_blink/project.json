@@ -1,0 +1,8 @@
+{
+  "name": "Blink - configurable LED blinking",
+  "description": "Blinking LED with configurable pin and interval, additionally an SOS pattern in Morse code",
+  "type": "micropython",
+  "chips": ["esp32", "esp8266", "esp32s2", "esp32s3", "esp32c3"],
+  "main": "main.py",
+  "files": ["main.py"]
+}

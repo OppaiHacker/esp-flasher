@@ -1,0 +1,8 @@
+{
+  "name": "Hello World",
+  "description": "Simple startup program - prints a greeting every second and flashes the built-in LED",
+  "type": "micropython",
+  "chips": ["esp32", "esp8266", "esp32s2", "esp32s3", "esp32c3"],
+  "main": "main.py",
+  "files": ["main.py"]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "WiFi Scanner",
+  "description": "Scans nearby WiFi networks every 10 seconds and displays a table with SSID, signal strength, channel, and security type",
+  "type": "micropython",
+  "chips": ["esp32", "esp8266", "esp32s2", "esp32s3", "esp32c3"],
+  "main": "main.py",
+  "files": ["main.py"]
+}

@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"espflasher/internal/bootloaders"
 	"espflasher/internal/esp"
 	"espflasher/internal/monitor"
 	"espflasher/internal/paths"
@@ -27,7 +28,7 @@ type chMsg struct {
 
 // startOpScreen switches to the progress screen and fires the operation in a goroutine.
 func (m Model) startOpScreen(title string, fn func(emit func(tea.Msg)) error) (tea.Model, tea.Cmd) {
-	if m.scr == scrMenu || m.scr == scrRpiMenu || m.scr == scrSettings {
+	if m.scr == scrMenu || m.scr == scrRpiMenu || m.scr == scrBootMenu || m.scr == scrSettings {
 		m.prevScr = m.scr
 	}
 	m.scr = scrProgress
@@ -193,6 +194,51 @@ func (m Model) startFlashProject(dir string) (tea.Model, tea.Cmd) {
 		default:
 			return fmt.Errorf("%s%q", T("err.proj_type"), p.Type)
 		}
+	})
+}
+
+// startFlashBootloader writes the selected bootloader .bin at the
+// chip-specific offset (0x1000 for esp32/s2, 0x0 otherwise).
+func (m Model) startFlashBootloader(bin string) (tea.Model, tea.Cmd) {
+	port, chip := m.port, m.chip
+	return m.startOpScreen(T("op.blflash"), func(emit func(tea.Msg)) error {
+		c, err := ensureChip(port, chip, emit)
+		if err != nil {
+			return err
+		}
+		off := bootloaders.Offset(c)
+		emit(logLine(T("log.bl_offset") + c + ": " + off))
+		return esp.FlashBin(port, c, bin, off, logTo(emit))
+	})
+}
+
+// startInstallBootloader downloads a bootloader (file or archive) from
+// a URL into bootloaders/ and lists the .bin files it produced.
+func (m Model) startInstallBootloader(url string) (tea.Model, tea.Cmd) {
+	return m.startOpScreen(T("op.bldl"), func(emit func(tea.Msg)) error {
+		bins, err := bootloaders.Install(url, paths.BootloadersDir(), progressTo(emit), logTo(emit))
+		if err != nil {
+			return err
+		}
+		for _, b := range bins {
+			emit(logLine(T("log.bl_found") + b))
+		}
+		emit(logLine(T("log.bl_hint")))
+		return nil
+	})
+}
+
+// startInstallProject downloads a project (file or archive) from a URL
+// into projects/ and generates project.json when missing.
+func (m Model) startInstallProject(url string) (tea.Model, tea.Cmd) {
+	return m.startOpScreen(T("op.projdl"), func(emit func(tea.Msg)) error {
+		dir, err := projects.InstallFromURL(url, paths.ProjectsDir(), progressTo(emit), logTo(emit))
+		if err != nil {
+			return err
+		}
+		emit(logLine(T("log.installed") + dir))
+		emit(logLine(T("log.proj_hint")))
+		return nil
 	})
 }
 

@@ -23,9 +23,10 @@ Serial port access: add yourself to the `uucp` (Arch) / `dialout` (Debian) group
 | Flash MicroPython | downloads firmware from micropython.org for detected chip and flashes |
 | Hello World | test `main.py` blinking LED (requires MicroPython) |
 | Serial Monitor | opens a **new terminal window** — output view + sending commands |
-| Flash project | list of projects from `projects/`, type `micropython` (mpremote) or `bin` (esptool) |
+| Flash project | list of projects from `projects/`, type `micropython` (mpremote) or `bin` (esptool); projects can also be installed from a URL (plain file or archive) |
 | Erase flash | `erase_flash` with confirmation |
 | Raspberry Pi | image download, decompression (.xz/.gz/.zip), customization (hostname, SSH, WiFi, user), `dd` write to SD card, sha256 verification |
+| Bootloaders | flash `.bin` files from `bootloaders/`, search bootloaders on GitHub (repositories → release files), download from URL — plain `.bin` or archive (zip/rar/7z/gz/xz/bz2/tar) |
 
 ## Directory Structure
 
@@ -36,7 +37,9 @@ esp/
 ├── internal/
 │   ├── ui/             # TUI (bubbletea): menus, forms, progress
 │   ├── esp/            # esptool/mpremote, ports, reset, MicroPython firmware
-│   ├── projects/       # project.json manifests
+│   ├── projects/       # project.json manifests + install from URL
+│   ├── bootloaders/    # bootloaders/ dir, GitHub search, URL install
+│   ├── archive/        # download + extraction (zip/rar/7z/gz/xz/bz2/tar)
 │   ├── monitor/        # serial monitor + opening new terminal
 │   ├── rpi/            # images: download, customize, dd, verify
 │   └── paths/          # project directories
@@ -47,6 +50,7 @@ esp/
 │   ├── project3_wifi_scanner/
 │   └── project4_web_led/
 ├── firmware/           # downloaded MicroPython bins (cache)
+├── bootloaders/        # bootloader .bin files (local + downloaded)
 ├── iso/                # OS images for Raspberry Pi
 └── logs/
 ```

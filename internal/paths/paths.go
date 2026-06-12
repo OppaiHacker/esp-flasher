@@ -24,11 +24,12 @@ func BaseDir() string {
 	return cwd
 }
 
-func ToolsDir() string    { return ensure(filepath.Join(BaseDir(), "tools")) }
-func ProjectsDir() string { return ensure(filepath.Join(BaseDir(), "projects")) }
-func FirmwareDir() string { return ensure(filepath.Join(BaseDir(), "firmware")) }
-func IsoDir() string      { return ensure(filepath.Join(BaseDir(), "iso")) }
-func LogsDir() string     { return ensure(filepath.Join(BaseDir(), "logs")) }
+func ToolsDir() string       { return ensure(filepath.Join(BaseDir(), "tools")) }
+func ProjectsDir() string    { return ensure(filepath.Join(BaseDir(), "projects")) }
+func FirmwareDir() string    { return ensure(filepath.Join(BaseDir(), "firmware")) }
+func IsoDir() string         { return ensure(filepath.Join(BaseDir(), "iso")) }
+func LogsDir() string        { return ensure(filepath.Join(BaseDir(), "logs")) }
+func BootloadersDir() string { return ensure(filepath.Join(BaseDir(), "bootloaders")) }
 
 func ensure(dir string) string {
 	_ = os.MkdirAll(dir, 0o755)

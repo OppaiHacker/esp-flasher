@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"espflasher/internal/bootloaders"
 	"espflasher/internal/config"
 	"espflasher/internal/esp"
 	"espflasher/internal/i18n"
@@ -31,6 +32,7 @@ const (
 	scrBoot screen = iota
 	scrMenu
 	scrRpiMenu
+	scrBootMenu
 	scrSettings
 	scrChooser
 	scrForm
@@ -55,6 +57,9 @@ const (
 	actImageVerify
 	actDrive
 	actDriveVerify
+	actBootloaderFlash
+	actBootRepo
+	actBootAsset
 )
 
 // form actions
@@ -65,6 +70,9 @@ const (
 	formCustomize
 	formURL
 	formBaud
+	formBootQuery
+	formBootURL
+	formProjectURL
 )
 
 // confirmation actions
@@ -105,9 +113,10 @@ type Model struct {
 	chip string
 
 	// menu
-	menuCursor    int
-	rpiMenuCursor int
-	setMenuCursor int
+	menuCursor     int
+	rpiMenuCursor  int
+	bootMenuCursor int
+	setMenuCursor  int
 
 	// chooser
 	chTitle  string
@@ -289,6 +298,27 @@ func (m Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case scrBootMenu:
+		entries := bootMenu()
+		m.flash = ""
+		if key == "esc" {
+			m.scr = scrMenu
+			return m, nil
+		}
+		if navigate(key, &m.bootMenuCursor, len(entries)) {
+			return m, nil
+		}
+		if key == "enter" {
+			return m.bootMenuSelect(entries[m.bootMenuCursor].key)
+		}
+		for i, e := range entries {
+			if e.key == key {
+				m.bootMenuCursor = i
+				return m.bootMenuSelect(key)
+			}
+		}
+		return m, nil
+
 	case scrSettings:
 		entries := settingsMenu()
 		m.flash = ""
@@ -394,6 +424,7 @@ func mainMenu() []menuEntry {
 		{"7", T("m.project"), T("m.project.d")},
 		{"8", T("m.erase"), T("m.erase.d")},
 		{"9", T("m.rpi"), T("m.rpi.d")},
+		{"0", T("m.boot"), T("m.boot.d")},
 		{"s", T("m.settings"), T("m.settings.d")},
 		{"q", T("m.quit"), ""},
 	}
@@ -408,6 +439,15 @@ func rpiMenu() []menuEntry {
 		{"5", T("rpi.flash"), T("rpi.flash.d")},
 		{"6", T("rpi.verify"), T("rpi.verify.d")},
 		{"b", T("rpi.back"), ""},
+	}
+}
+
+func bootMenu() []menuEntry {
+	return []menuEntry{
+		{"1", T("bl.flash"), T("bl.flash.d")},
+		{"2", T("bl.search"), T("bl.search.d")},
+		{"3", T("bl.url"), T("bl.url.d")},
+		{"b", T("bl.back"), ""},
 	}
 }
 
@@ -508,6 +548,9 @@ func (m Model) menuSelect(key string) (tea.Model, tea.Cmd) {
 	case "9":
 		m.scr = scrRpiMenu
 		return m, nil
+	case "0":
+		m.scr = scrBootMenu
+		return m, nil
 	case "s":
 		m.scr = scrSettings
 		return m, nil
@@ -554,6 +597,38 @@ func (m Model) rpiMenuSelect(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) bootMenuSelect(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "1":
+		if !m.requirePort() {
+			return m, nil
+		}
+		return m.openBootloaderChooser()
+	case "2":
+		m.formTitle = T("fm.bquery")
+		m.formFields = []formField{{label: T("fm.bquery.f"), placeholder: "esp32 bootloader"}}
+		m.formIdx = 0
+		m.formAction = formBootQuery
+		m.prevScr = scrBootMenu
+		m.setInputForField()
+		m.scr = scrForm
+		return m, textinput.Blink
+	case "3":
+		m.formTitle = T("fm.burl")
+		m.formFields = []formField{{label: T("fm.burl.f"), placeholder: "https://..."}}
+		m.formIdx = 0
+		m.formAction = formBootURL
+		m.prevScr = scrBootMenu
+		m.setInputForField()
+		m.scr = scrForm
+		return m, textinput.Blink
+	case "b":
+		m.scr = scrMenu
+		return m, nil
+	}
+	return m, nil
+}
+
 func (m Model) settingsSelect(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "1":
@@ -581,7 +656,7 @@ func (m Model) settingsSelect(key string) (tea.Model, tea.Cmd) {
 // ---------- CHOOSERY ----------
 
 func (m Model) openChooser(title string, items []chooserItem, act action) (tea.Model, tea.Cmd) {
-	if m.scr == scrMenu || m.scr == scrRpiMenu || m.scr == scrSettings {
+	if m.scr == scrMenu || m.scr == scrRpiMenu || m.scr == scrBootMenu || m.scr == scrSettings {
 		m.prevScr = m.scr
 	}
 	m.chTitle, m.chItems, m.chCursor, m.chAction = title, items, 0, act
@@ -616,10 +691,6 @@ func (m Model) openProjectChooser() (tea.Model, tea.Cmd) {
 		m.flash = styErr.Render(err.Error())
 		return m, nil
 	}
-	if len(projs) == 0 {
-		m.flash = styWarn.Render(T("fl.no_projects"))
-		return m, nil
-	}
 	var items []chooserItem
 	for _, p := range projs {
 		desc := p.Description + "  [" + p.Type + "; " + strings.Join(p.Chips, ", ") + "]"
@@ -628,7 +699,25 @@ func (m Model) openProjectChooser() (tea.Model, tea.Cmd) {
 		}
 		items = append(items, chooserItem{title: p.Name, desc: desc, value: p.Dir})
 	}
+	items = append(items, chooserItem{title: T("ch.proj.url"), desc: T("ch.proj.url.d"), value: ""})
 	return m.openChooser(T("ch.project"), items, actProject)
+}
+
+func (m Model) openBootloaderChooser() (tea.Model, tea.Cmd) {
+	bls, err := bootloaders.Scan(paths.BootloadersDir())
+	if err != nil {
+		m.flash = styErr.Render(err.Error())
+		return m, nil
+	}
+	if len(bls) == 0 {
+		m.flash = styWarn.Render(T("fl.no_bls"))
+		return m, nil
+	}
+	var items []chooserItem
+	for _, b := range bls {
+		items = append(items, chooserItem{title: b.Rel, desc: b.SizeH, value: b.Path})
+	}
+	return m.openChooser(T("ch.bl"), items, actBootloaderFlash)
 }
 
 func (m Model) openImageChooser(title string, act action, onlyImg bool) (tea.Model, tea.Cmd) {
@@ -722,7 +811,45 @@ func (m Model) chooserSelect(it chooserItem) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case actProject:
+		if it.value == "" { // download project from URL
+			m.formTitle = T("fm.purl")
+			m.formFields = []formField{{label: T("fm.purl.f"), placeholder: "https://..."}}
+			m.formIdx = 0
+			m.formAction = formProjectURL
+			m.prevScr = scrMenu
+			m.setInputForField()
+			m.scr = scrForm
+			return m, textinput.Blink
+		}
 		return m.startFlashProject(it.value)
+
+	case actBootloaderFlash:
+		return m.startFlashBootloader(it.value)
+
+	case actBootRepo:
+		assets, err := bootloaders.ListAssets(it.value)
+		if err != nil {
+			m.flash = styErr.Render(T("fl.search_err") + err.Error())
+			m.scr = scrBootMenu
+			return m, nil
+		}
+		if len(assets) == 0 {
+			m.flash = styWarn.Render(T("fl.no_assets"))
+			m.scr = scrBootMenu
+			return m, nil
+		}
+		var items []chooserItem
+		for _, a := range assets {
+			items = append(items, chooserItem{
+				title: a.Name,
+				desc:  a.Tag + "  " + a.SizeH(),
+				value: a.URL,
+			})
+		}
+		return m.openChooser(T("ch.assets"), items, actBootAsset)
+
+	case actBootAsset:
+		return m.startInstallBootloader(it.value)
 
 	case actImageShow:
 		return m, nil // view only, esc returns
@@ -853,6 +980,43 @@ func (m Model) formNext() (tea.Model, tea.Cmd) {
 			emit(logLine(T("log.saved") + path))
 			return nil
 		})
+	case formBootQuery:
+		query := m.formFields[0].value
+		repos, err := bootloaders.SearchRepos(query)
+		if err != nil {
+			m.flash = styErr.Render(T("fl.search_err") + err.Error())
+			m.scr = scrBootMenu
+			return m, nil
+		}
+		if len(repos) == 0 {
+			m.flash = styWarn.Render(T("fl.no_repos"))
+			m.scr = scrBootMenu
+			return m, nil
+		}
+		var items []chooserItem
+		for _, r := range repos {
+			items = append(items, chooserItem{
+				title: r.FullName,
+				desc:  fmt.Sprintf("★ %d  %s", r.Stars, r.Description),
+				value: r.FullName,
+			})
+		}
+		m.scr = scrBootMenu // so esc from chooser returns here
+		return m.openChooser(T("ch.repos"), items, actBootRepo)
+	case formBootURL:
+		url := m.formFields[0].value
+		if url == "" {
+			m.scr = m.prevScr
+			return m, nil
+		}
+		return m.startInstallBootloader(url)
+	case formProjectURL:
+		url := m.formFields[0].value
+		if url == "" {
+			m.scr = m.prevScr
+			return m, nil
+		}
+		return m.startInstallProject(url)
 	case formBaud:
 		if v, err := strconv.Atoi(m.formFields[0].value); err == nil && v > 0 {
 			m.cfg.Baud = v
@@ -914,6 +1078,8 @@ func (m Model) View() string {
 		return m.viewMenu(T("menu.main"), mainMenu(), m.menuCursor)
 	case scrRpiMenu:
 		return m.viewMenu(T("menu.rpi"), rpiMenu(), m.rpiMenuCursor)
+	case scrBootMenu:
+		return m.viewMenu(T("menu.boot"), bootMenu(), m.bootMenuCursor)
 	case scrSettings:
 		return m.viewMenu(T("menu.settings"), m.settingsMenuView(), m.setMenuCursor)
 	case scrChooser:

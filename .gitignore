@@ -2,9 +2,10 @@ espflasher
 tools/.venv/
 firmware/*.bin
 iso/*
-!iso/.gitkeep
 logs/*
-!logs/.gitkeep
+bootloaders
+!.gitkeep
+
 __pycache__/
 *.part
 

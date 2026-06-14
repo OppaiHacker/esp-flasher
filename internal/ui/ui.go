@@ -58,6 +58,7 @@ const (
 	actDrive
 	actDriveVerify
 	actBootloaderFlash
+	actBootloaderOffset
 	actBootRepo
 	actBootAsset
 )
@@ -73,6 +74,7 @@ const (
 	formBootQuery
 	formBootURL
 	formProjectURL
+	formBootOffset
 )
 
 // confirmation actions
@@ -147,8 +149,9 @@ type Model struct {
 	prog       progress.Model
 
 	// rpi selections
-	selImage string
-	selDrive string
+	selImage      string
+	selDrive      string
+	selBootloader string // .bin chosen, awaiting offset selection
 
 	// built-in monitor
 	monSession *monitor.Session
@@ -664,6 +667,29 @@ func (m Model) openChooser(title string, items []chooserItem, act action) (tea.M
 	return m, nil
 }
 
+// openBootOffsetChooser lists common flash offsets plus a custom entry, so the
+// user picks where the selected bootloader .bin goes when the chip default is
+// not the right one (e.g. merged images, non-standard layouts).
+func (m Model) openBootOffsetChooser() (tea.Model, tea.Cmd) {
+	def := bootloaders.Offset(m.chip)
+	opts := []struct{ off, desc string }{
+		{"0x0", T("ch.boff.bl0")},
+		{"0x1000", T("ch.boff.bl32")},
+		{"0x8000", T("ch.boff.part")},
+		{"0x10000", T("ch.boff.app")},
+	}
+	var items []chooserItem
+	for _, o := range opts {
+		desc := o.desc
+		if o.off == def {
+			desc += T("ch.boff.def")
+		}
+		items = append(items, chooserItem{title: o.off, desc: desc, value: o.off})
+	}
+	items = append(items, chooserItem{title: T("ch.boff.cust"), desc: T("ch.boff.cust.d"), value: ""})
+	return m.openChooser(T("ch.boffset"), items, actBootloaderOffset)
+}
+
 func (m Model) openPortChooser() (tea.Model, tea.Cmd) {
 	ports, err := esp.ListPorts()
 	if err != nil {
@@ -824,7 +850,21 @@ func (m Model) chooserSelect(it chooserItem) (tea.Model, tea.Cmd) {
 		return m.startFlashProject(it.value)
 
 	case actBootloaderFlash:
-		return m.startFlashBootloader(it.value)
+		m.selBootloader = it.value
+		return m.openBootOffsetChooser()
+
+	case actBootloaderOffset:
+		if it.value == "" { // custom — ask for hex offset
+			m.formTitle = T("fm.boff")
+			m.formFields = []formField{{label: T("fm.boff.f"), placeholder: bootloaders.Offset(m.chip)}}
+			m.formIdx = 0
+			m.formAction = formBootOffset
+			m.prevScr = scrBootMenu
+			m.setInputForField()
+			m.scr = scrForm
+			return m, textinput.Blink
+		}
+		return m.startFlashBootloader(m.selBootloader, it.value)
 
 	case actBootRepo:
 		assets, err := bootloaders.ListAssets(it.value)
@@ -1010,6 +1050,17 @@ func (m Model) formNext() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.startInstallBootloader(url)
+	case formBootOffset:
+		off := m.formFields[0].value
+		if off == "" {
+			off = bootloaders.Offset(m.chip) // empty = chip default
+		}
+		if _, err := strconv.ParseUint(off, 0, 32); err != nil {
+			m.flash = styErr.Render(T("fl.bad_offset"))
+			m.scr = scrBootMenu
+			return m, nil
+		}
+		return m.startFlashBootloader(m.selBootloader, off)
 	case formProjectURL:
 		url := m.formFields[0].value
 		if url == "" {

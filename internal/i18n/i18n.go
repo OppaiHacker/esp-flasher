@@ -146,6 +146,7 @@ var pl = map[string]string{
 	"fl.no_repos":    "Nic nie znaleziono — zmień zapytanie.",
 	"fl.no_assets":   "Brak plików .bin / archiwów w release'ach tego repozytorium.",
 	"fl.search_err":  "Wyszukiwanie: ",
+	"fl.bad_offset":  "Zły offset — podaj hex, np. 0x0 lub 0x1000.",
 
 	"ch.port":       "Wybierz port szeregowy",
 	"ch.port.esp":   " — wygląda na ESP",
@@ -168,6 +169,14 @@ var pl = map[string]string{
 	"ch.assets":     "Wybierz plik do pobrania",
 	"ch.proj.url":   "Z URL...",
 	"ch.proj.url.d": "pobierz projekt z internetu (plik lub archiwum)",
+	"ch.boffset":    "Gdzie wgrać bootloader? (offset flash)",
+	"ch.boff.def":   "  domyślny dla układu",
+	"ch.boff.bl32":  "bootloader ESP32 / ESP32-S2",
+	"ch.boff.bl0":   "bootloader S3/C3/C6/8266 lub obraz scalony",
+	"ch.boff.part":  "tablica partycji",
+	"ch.boff.app":   "aplikacja / firmware",
+	"ch.boff.cust":  "Własny offset...",
+	"ch.boff.cust.d": "wpisz adres hex ręcznie",
 
 	"op.detect":   "Wykrywanie układu",
 	"op.reset":    "Reset ESP",
@@ -210,6 +219,8 @@ var pl = map[string]string{
 	"fm.bquery.f": "szukaj (np. esp32 bootloader)",
 	"fm.burl":     "Pobieranie bootloadera",
 	"fm.burl.f":   "URL pliku .bin lub archiwum",
+	"fm.boff":     "Offset wgrywania bootloadera",
+	"fm.boff.f":   "offset hex (Enter = domyślny dla układu)",
 	"fm.purl":     "Pobieranie projektu",
 	"fm.purl.f":   "URL pliku lub archiwum projektu",
 
@@ -338,6 +349,7 @@ var en = map[string]string{
 	"fl.no_repos":    "Nothing found — change the query.",
 	"fl.no_assets":   "No .bin files / archives in this repository's releases.",
 	"fl.search_err":  "Search: ",
+	"fl.bad_offset":  "Bad offset — give hex, e.g. 0x0 or 0x1000.",
 
 	"ch.port":       "Select serial port",
 	"ch.port.esp":   " — looks like an ESP",
@@ -360,6 +372,14 @@ var en = map[string]string{
 	"ch.assets":     "Select file to download",
 	"ch.proj.url":   "From URL...",
 	"ch.proj.url.d": "download a project from the internet (file or archive)",
+	"ch.boffset":    "Where to flash the bootloader? (flash offset)",
+	"ch.boff.def":   "  chip default",
+	"ch.boff.bl32":  "ESP32 / ESP32-S2 bootloader",
+	"ch.boff.bl0":   "S3/C3/C6/8266 bootloader or merged image",
+	"ch.boff.part":  "partition table",
+	"ch.boff.app":   "application / firmware",
+	"ch.boff.cust":  "Custom offset...",
+	"ch.boff.cust.d": "type a hex address manually",
 
 	"op.detect":   "Detecting chip",
 	"op.reset":    "ESP reset",
@@ -402,6 +422,8 @@ var en = map[string]string{
 	"fm.bquery.f": "search (e.g. esp32 bootloader)",
 	"fm.burl":     "Download bootloader",
 	"fm.burl.f":   "URL of .bin file or archive",
+	"fm.boff":     "Bootloader flash offset",
+	"fm.boff.f":   "hex offset (Enter = chip default)",
 	"fm.purl":     "Download project",
 	"fm.purl.f":   "URL of project file or archive",
 

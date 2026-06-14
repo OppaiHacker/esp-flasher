@@ -197,16 +197,15 @@ func (m Model) startFlashProject(dir string) (tea.Model, tea.Cmd) {
 	})
 }
 
-// startFlashBootloader writes the selected bootloader .bin at the
-// chip-specific offset (0x1000 for esp32/s2, 0x0 otherwise).
-func (m Model) startFlashBootloader(bin string) (tea.Model, tea.Cmd) {
+// startFlashBootloader writes the selected bootloader .bin at the given offset
+// (chosen by the user from openBootOffsetChooser).
+func (m Model) startFlashBootloader(bin, off string) (tea.Model, tea.Cmd) {
 	port, chip := m.port, m.chip
 	return m.startOpScreen(T("op.blflash"), func(emit func(tea.Msg)) error {
 		c, err := ensureChip(port, chip, emit)
 		if err != nil {
 			return err
 		}
-		off := bootloaders.Offset(c)
 		emit(logLine(T("log.bl_offset") + c + ": " + off))
 		return esp.FlashBin(port, c, bin, off, logTo(emit))
 	})

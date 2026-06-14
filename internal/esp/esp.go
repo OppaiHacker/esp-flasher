@@ -18,6 +18,7 @@ import (
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
 
+	"espflasher/internal/archive"
 	"espflasher/internal/paths"
 )
 
@@ -344,7 +345,10 @@ func FlashMicroPython(port, chip string, log func(string)) error {
 }
 
 func download(url, dst string) error {
-	client := &http.Client{Timeout: 10 * time.Minute}
+	if err := archive.ValidateURL(url); err != nil {
+		return err
+	}
+	client := archive.SecureClient(10 * time.Minute)
 	resp, err := client.Get(url)
 	if err != nil {
 		return err

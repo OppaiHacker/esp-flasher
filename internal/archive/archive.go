@@ -14,6 +14,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -96,6 +97,29 @@ func safeJoin(dir, name string) (string, error) {
 		return "", fmt.Errorf("archive entry escapes target directory: %s", name)
 	}
 	return target, nil
+}
+
+// unsafeEntry reports whether an archive entry name would escape the
+// extraction directory (absolute path, Windows drive, or a ".."
+// component). Used to pre-validate archives handed to external tools,
+// which do not honour safeJoin.
+func unsafeEntry(name string) bool {
+	n := strings.ReplaceAll(strings.TrimSpace(name), "\\", "/")
+	if n == "" {
+		return false
+	}
+	if strings.HasPrefix(n, "/") {
+		return true
+	}
+	if len(n) >= 2 && n[1] == ':' { // C:\ etc.
+		return true
+	}
+	for _, part := range strings.Split(n, "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func extractZip(src, dstDir string, log func(string)) error {
@@ -249,15 +273,9 @@ func extractSingle(src, dstDir, decomp string) error {
 
 // extractRar unpacks .rar via external tool: unrar, bsdtar or 7z.
 func extractRar(src, dstDir string, log func(string)) error {
-	if p, err := exec.LookPath("unrar"); err == nil {
-		return runTool(log, p, "x", "-o+", "-y", src, dstDir+string(os.PathSeparator))
-	}
-	if p, err := exec.LookPath("bsdtar"); err == nil {
-		return runTool(log, p, "-xvf", src, "-C", dstDir)
-	}
-	for _, name := range []string{"7z", "7za"} {
+	for _, name := range []string{"unrar", "bsdtar", "7z", "7za"} {
 		if p, err := exec.LookPath(name); err == nil {
-			return runTool(log, p, "x", "-y", "-o"+dstDir, src)
+			return secureExtract(p, src, dstDir, log)
 		}
 	}
 	return fmt.Errorf("no tool to unpack .rar — install 'unrar', 'bsdtar' or '7zip'")
@@ -265,15 +283,75 @@ func extractRar(src, dstDir string, log func(string)) error {
 
 // extract7z unpacks .7z via external tool: 7z, 7za or bsdtar.
 func extract7z(src, dstDir string, log func(string)) error {
-	for _, name := range []string{"7z", "7za"} {
+	for _, name := range []string{"7z", "7za", "bsdtar"} {
 		if p, err := exec.LookPath(name); err == nil {
-			return runTool(log, p, "x", "-y", "-o"+dstDir, src)
+			return secureExtract(p, src, dstDir, log)
 		}
 	}
-	if p, err := exec.LookPath("bsdtar"); err == nil {
-		return runTool(log, p, "-xvf", src, "-C", dstDir)
+	return fmt.Errorf("no tool to unpack '.7z' — install '7zip' or 'bsdtar'")
+}
+
+// secureExtract unpacks src into dstDir with an external tool. Because
+// these tools do not honour safeJoin, the archive is first listed and
+// every entry is validated with unsafeEntry; extraction is aborted
+// (fail-closed) if listing fails or any entry would escape dstDir.
+func secureExtract(tool, src, dstDir string, log func(string)) error {
+	var listArgs, exArgs []string
+	parse := splitLines
+	switch filepath.Base(tool) {
+	case "unrar":
+		listArgs = []string{"lb", "--", src}
+		exArgs = []string{"x", "-o+", "-y", src, dstDir + string(os.PathSeparator)}
+	case "bsdtar":
+		listArgs = []string{"-tf", src}
+		exArgs = []string{"-xvf", src, "-C", dstDir}
+	case "7z", "7za":
+		listArgs = []string{"l", "-ba", "-slt", "--", src}
+		exArgs = []string{"x", "-y", "-o" + dstDir, src}
+		parse = parse7zList
+	default:
+		return fmt.Errorf("unsupported unpacker: %s", filepath.Base(tool))
 	}
-	return fmt.Errorf("no tool to unpack .7z — install '7zip' or 'bsdtar'")
+
+	out, err := exec.Command(tool, listArgs...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: cannot list archive %s: %w", filepath.Base(tool), filepath.Base(src), err)
+	}
+	entries := parse(string(out))
+	if len(entries) == 0 {
+		return fmt.Errorf("%s: archive %s appears empty or unreadable", filepath.Base(tool), filepath.Base(src))
+	}
+	for _, name := range entries {
+		if name == src { // 7z -slt may echo the archive's own path
+			continue
+		}
+		if unsafeEntry(name) {
+			return fmt.Errorf("archive entry escapes target directory: %s", name)
+		}
+	}
+	return runTool(log, tool, exArgs...)
+}
+
+// splitLines returns the non-empty lines of s.
+func splitLines(s string) []string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimRight(l, "\r"); strings.TrimSpace(l) != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// parse7zList extracts entry paths from "7z l -slt" output ("Path = …").
+func parse7zList(s string) []string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimRight(l, "\r"), "Path = "); ok {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // runTool runs an external unpacker, passing its output to log.
@@ -351,14 +429,51 @@ func downloadFilename(resp *http.Response, rawURL string) string {
 	return name
 }
 
+// ValidateURL rejects URLs that are not plain http/https (blocks
+// file://, ftp://, scheme confusion) or that have no host.
+func ValidateURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %w", raw, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported URL scheme %q (only http/https allowed)", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("invalid URL %q: missing host", raw)
+	}
+	return nil
+}
+
+// SecureClient returns an http.Client that follows redirects but
+// refuses any that downgrade the scheme from https to http, so an
+// https download cannot be silently MITM'd via a plaintext redirect.
+func SecureClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+				return fmt.Errorf("refusing insecure redirect from https to %s", req.URL.Scheme)
+			}
+			return nil
+		},
+	}
+}
+
 // DownloadFile downloads rawURL into dstDir, reporting
 // progress(done, total) (total is -1 when the server does not send a
 // size). Returns the path of the saved file.
 func DownloadFile(rawURL, dstDir string, progress func(done, total int64)) (string, error) {
+	if err := ValidateURL(rawURL); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
 		return "", fmt.Errorf("cannot create directory %s: %w", dstDir, err)
 	}
-	client := &http.Client{Timeout: 30 * time.Minute}
+	client := SecureClient(30 * time.Minute)
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("invalid URL %s: %w", rawURL, err)

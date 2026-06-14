@@ -14,6 +14,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
+
+	"espflasher/internal/archive"
 )
 
 // countingReader counts read bytes and reports progress via
@@ -105,10 +108,13 @@ func downloadFilename(resp *http.Response, rawURL string) string {
 // be -1 if the server doesn't provide the size). Returns the path
 // to the saved file.
 func DownloadImage(url, isoDir string, progress func(done, total int64)) (string, error) {
+	if err := archive.ValidateURL(url); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(isoDir, 0o755); err != nil {
 		return "", fmt.Errorf("cannot create directory %s: %w", isoDir, err)
 	}
-	resp, err := http.Get(url)
+	resp, err := archive.SecureClient(30 * time.Minute).Get(url)
 	if err != nil {
 		return "", fmt.Errorf("downloading %s failed: %w", url, err)
 	}

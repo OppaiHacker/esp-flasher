@@ -119,6 +119,36 @@ func TestExtractSingleGz(t *testing.T) {
 	}
 }
 
+func TestUnsafeEntry(t *testing.T) {
+	bad := []string{"../evil", "a/../../etc/passwd", "/etc/passwd", "C:\\Windows\\x", "dir\\..\\..\\x"}
+	for _, n := range bad {
+		if !unsafeEntry(n) {
+			t.Errorf("unsafeEntry(%q) = false, want true", n)
+		}
+	}
+	good := []string{"boot.bin", "sub/dir/fw.bin", "a..b/x", "...dots/y", ""}
+	for _, n := range good {
+		if unsafeEntry(n) {
+			t.Errorf("unsafeEntry(%q) = true, want false", n)
+		}
+	}
+}
+
+func TestValidateURL(t *testing.T) {
+	ok := []string{"http://example.com/a.bin", "https://x.org/p/q.zip"}
+	for _, u := range ok {
+		if err := ValidateURL(u); err != nil {
+			t.Errorf("ValidateURL(%q) = %v, want nil", u, err)
+		}
+	}
+	bad := []string{"file:///etc/passwd", "ftp://x/y", "gopher://x", "https://", "/local/path", "javascript:alert(1)"}
+	for _, u := range bad {
+		if err := ValidateURL(u); err == nil {
+			t.Errorf("ValidateURL(%q) = nil, want error", u)
+		}
+	}
+}
+
 func TestExtractTarXz(t *testing.T) {
 	if _, err := exec.LookPath("xz"); err != nil {
 		t.Skip("xz not installed")
